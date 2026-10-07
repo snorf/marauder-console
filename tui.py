@@ -127,79 +127,21 @@ def intro() -> None:
     banner()
 
 
-def interactive_toggle(rows, title=None):
-    """Arrow-key multi-select.
+def parse_indexes(raw, valid):
+    """Parse 'all' / 'none' / a comma list into a set of indexes.
 
-    rows: list of (label, selected_bool). Returns a new list of booleans in the
-    same order. Cancelling (q/Esc) returns the original selection unchanged.
-    Returns None when stdout is not a TTY, so the caller can fall back to typing.
+    Returns (indexes, error). `valid` is the set of selectable indexes.
     """
-    if not _TTY or not rows:
-        return None
-    import os
-    import select as _select
-    import termios
-    import tty
-
-    if title is None:
-        title = "↑/↓ stega · [mellanslag] toggla · [enter] klar · [q] avbryt"
-    initial = [bool(s) for _, s in rows]
-    sel = list(initial)
-    cursor = 0
-    n = len(rows)
-
-    def render():
-        buf = [BOLD + GREEN + title + RESET]
-        for i, (label, _) in enumerate(rows):
-            box = c("[x]", BGREEN) if sel[i] else c("[ ]", DIM)
-            arrow = c("▶", BGREEN) if i == cursor else " "
-            body = (BGREEN if i == cursor else GREEN) + label + RESET
-            buf.append(f"{arrow} {box} {body}")
-        # Clear and redraw from the top each keypress -- robust to any list
-        # height and to terminal scrolling (no cursor-up arithmetic).
-        sys.stdout.write("\033[2J\033[H" + "\n".join(buf) + "\n")
-        sys.stdout.flush()
-
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    sys.stdout.write(_HIDE)
-
-    def read_key():
-        # Read the raw fd, not buffered sys.stdin: otherwise Python's input
-        # buffer swallows the "[A" tail of an arrow key and we see a bare Esc.
-        b = os.read(fd, 1)
-        if b == b"\x1b":
-            ready, _, _ = _select.select([fd], [], [], 0.05)
-            if ready:
-                b += os.read(fd, 2)
-        return b
-
+    raw = raw.strip().lower()
+    if raw in ("all", "a", "*"):
+        return set(valid), None
+    if raw in ("none", "clear", "-"):
+        return set(), None
     try:
-        # cbreak (not raw): key-at-a-time, no echo, but keep output NL->CR-LF
-        # mapping so redraws land at column 0 instead of staircasing.
-        tty.setcbreak(fd)
-        render()
-        try:
-            while True:
-                key = read_key()
-                if not key:
-                    break
-                if key == b"\x1b[A" or key in (b"k", b"K"):
-                    cursor = (cursor - 1) % n
-                elif key == b"\x1b[B" or key in (b"j", b"J"):
-                    cursor = (cursor + 1) % n
-                elif key == b" ":
-                    sel[cursor] = not sel[cursor]
-                elif key in (b"\r", b"\n"):
-                    break
-                elif key in (b"q", b"Q", b"\x03", b"\x1b"):
-                    sel = list(initial)  # q / Ctrl-C / bare Esc = cancel
-                    break
-                render()
-        except KeyboardInterrupt:
-            sel = list(initial)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        sys.stdout.write(_SHOW + "\n")
-        sys.stdout.flush()
-    return sel
+        want = {int(x) for x in raw.replace(" ", "").split(",") if x}
+    except ValueError:
+        return None, "Ogiltig inmatning — använd t.ex. 0,3,5"
+    bad = want - set(valid)
+    if bad:
+        return None, f"Okända index: {sorted(bad)}"
+    return want, None

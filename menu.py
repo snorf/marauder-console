@@ -22,7 +22,7 @@ WORDLIST_DEFAULT = Path(__file__).resolve().parent / "rockyou.txt"
 MENU_ITEMS = [
     ("1", "Scanna nätverk (passivt)"),
     ("2", "Visa hittade nät"),
-    ("3", "Välj mål (piltangenter + mellanslag)"),
+    ("3", "Välj mål (index: 0,3,5 · all · none)"),
     ("4", "Fånga handshake/PMKID — passivt"),
     ("5", "Fånga handshake/PMKID — med deauth (endast ditt nät)"),
     ("6", "Starta om kortet"),
@@ -56,23 +56,22 @@ def do_select(m):
     if not aps:
         tui.line("Inga nät — kör en scan först (alt 1).", tui.DIM)
         return
-    rows = [(f"[{ap.index:>2}] ch{ap.channel:>2} {ap.rssi:>4} dBm  {ap.ssid}", ap.selected)
-            for ap in aps]
-    result = tui.interactive_toggle(rows)
-    if result is None:
-        # Not a TTY -- fall back to typing an index.
-        show_aps(aps)
-        idx = ask_int("Index att toggla: ")
-        if idx is not None:
-            m.select_ap(idx)
-            show_aps(m.list_aps())
+    show_aps(aps)
+    raw = tui.prompt("Välj index (komma-separerat 0,3,5 · 'all' · 'none' · blankt=avbryt): ")
+    if not raw.strip():
+        tui.line("Avbrutet.", tui.DIM)
         return
+    desired, err = tui.parse_indexes(raw, {ap.index for ap in aps})
+    if err:
+        tui.line(err, tui.RED)
+        return
+    # Apply as a diff so the selection becomes exactly `desired`.
     changed = 0
-    for ap, want in zip(aps, result):
-        if want != ap.selected:
+    for ap in aps:
+        if (ap.index in desired) != ap.selected:
             m.select_ap(ap.index)
             changed += 1
-    tui.line(f"✔ {sum(result)} mål valda ({changed} ändrade).", tui.BGREEN)
+    tui.line(f"✔ {len(desired)} mål valda ({changed} ändrade).", tui.BGREEN)
     show_aps(m.list_aps())
 
 
