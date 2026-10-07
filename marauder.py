@@ -5,11 +5,30 @@ selecting access points. Nothing here transmits -- scanning is receive-only.
 """
 from __future__ import annotations
 
+import glob
 import re
 from dataclasses import dataclass
 
 from pcap_capture import PcapDeframer
 from transport import Transport
+
+_PORT_PATTERNS = (
+    "/dev/cu.usbmodemflip*",     # Flipper Zero (CLI or USB-UART bridge)
+    "/dev/cu.usbmodem*",         # ESP32-S2 native USB
+    "/dev/cu.usbserial*",        # CP210x / FTDI
+    "/dev/cu.SLAB_USBtoUART*",   # Silicon Labs
+    "/dev/cu.wchusbserial*",     # CH340 / CH9102
+    "/dev/ttyUSB*", "/dev/ttyACM*",  # Linux
+)
+
+
+def find_port():
+    """Best-effort auto-detect of the Flipper/ESP32 serial port, or None."""
+    for pattern in _PORT_PATTERNS:
+        hits = sorted(glob.glob(pattern))
+        if hits:
+            return hits[0]
+    return None
 
 # `list -a` row, e.g. "[3][CH:6] MyHomeWiFi -58 (selected)"
 _AP_RE = re.compile(

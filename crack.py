@@ -10,9 +10,17 @@ import subprocess
 from pathlib import Path
 
 
+class MissingTool(Exception):
+    """Raised when a required external tool is not on PATH."""
+
+    def __init__(self, tool: str):
+        super().__init__(tool)
+        self.tool = tool
+
+
 def _require(tool: str) -> None:
     if shutil.which(tool) is None:
-        raise RuntimeError(f"'{tool}' hittades inte i PATH (installera det först).")
+        raise MissingTool(tool)
 
 
 def latest_pcap(captures_dir) -> Path | None:
@@ -31,12 +39,12 @@ def convert(pcap, hashfile=None) -> Path | None:
     return None
 
 
-def crack(hashfile, wordlist) -> None:
+def crack(hashfile, wordlist, show_label: str = "Recovered keys (hashcat --show)") -> None:
     """Run hashcat -m 22000 against a wordlist, then print any recovered keys."""
     _require("hashcat")
     subprocess.run(
         ["hashcat", "-m", "22000", str(hashfile), str(wordlist), "-w", "3"],
         check=False,
     )
-    print("\n=== Återfunna nycklar (hashcat --show) ===")
+    print(f"\n=== {show_label} ===")
     subprocess.run(["hashcat", "-m", "22000", str(hashfile), "--show"], check=False)

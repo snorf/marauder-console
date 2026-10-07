@@ -78,7 +78,7 @@ def banner() -> None:
         line("  " + row, BGREEN)
     line("  ░▒▓  w i f i   r e c o n   c o n s o l e  ▓▒░", GREEN)
     line(rule, GREEN)
-    line("  // v1.0 · endast ditt eget nät · own-network use only", DIM)
+    line("  // a Marauder front-end · own-network / authorized use only", DIM)
     print()
 
 
@@ -130,7 +130,9 @@ def intro() -> None:
 def parse_indexes(raw, valid):
     """Parse 'all' / 'none' / a comma list into a set of indexes.
 
-    Returns (indexes, error). `valid` is the set of selectable indexes.
+    Returns (indexes, error). On success error is None; on failure indexes is
+    None and error is a (code, data) tuple the caller can localise:
+    ("bad_input", None) or ("unknown_index", [sorted bad indexes]).
     """
     raw = raw.strip().lower()
     if raw in ("all", "a", "*"):
@@ -140,8 +142,8 @@ def parse_indexes(raw, valid):
     try:
         want = {int(x) for x in raw.replace(" ", "").split(",") if x}
     except ValueError:
-        return None, "Ogiltig inmatning — använd t.ex. 0,3,5"
+        return None, ("bad_input", None)
     bad = want - set(valid)
     if bad:
-        return None, f"Okända index: {sorted(bad)}"
+        return None, ("unknown_index", sorted(bad))
     return want, None
