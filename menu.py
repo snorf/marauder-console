@@ -22,7 +22,7 @@ WORDLIST_DEFAULT = Path(__file__).resolve().parent / "rockyou.txt"
 MENU_ITEMS = [
     ("1", "Scanna nätverk (passivt)"),
     ("2", "Visa hittade nät"),
-    ("3", "Välj/avvälj mål (toggle)"),
+    ("3", "Välj mål (piltangenter + mellanslag)"),
     ("4", "Fånga handshake/PMKID — passivt"),
     ("5", "Fånga handshake/PMKID — med deauth (endast ditt nät)"),
     ("6", "Starta om kortet"),
@@ -49,6 +49,31 @@ def show_aps(aps):
     for ap in aps:
         mark = tui.c("  ◄ VALD", tui.BGREEN) if ap.selected else ""
         tui.line(f"  [{ap.index:>2}] ch{ap.channel:>2}  {ap.rssi:>4} dBm  {ap.ssid}" + mark)
+
+
+def do_select(m):
+    aps = m.list_aps()
+    if not aps:
+        tui.line("Inga nät — kör en scan först (alt 1).", tui.DIM)
+        return
+    rows = [(f"[{ap.index:>2}] ch{ap.channel:>2} {ap.rssi:>4} dBm  {ap.ssid}", ap.selected)
+            for ap in aps]
+    result = tui.interactive_toggle(rows)
+    if result is None:
+        # Not a TTY -- fall back to typing an index.
+        show_aps(aps)
+        idx = ask_int("Index att toggla: ")
+        if idx is not None:
+            m.select_ap(idx)
+            show_aps(m.list_aps())
+        return
+    changed = 0
+    for ap, want in zip(aps, result):
+        if want != ap.selected:
+            m.select_ap(ap.index)
+            changed += 1
+    tui.line(f"✔ {sum(result)} mål valda ({changed} ändrade).", tui.BGREEN)
+    show_aps(m.list_aps())
 
 
 def _countdown(label, seconds, work):
@@ -208,11 +233,7 @@ def main():
             elif choice == "2":
                 show_aps(m.list_aps())
             elif choice == "3":
-                show_aps(m.list_aps())
-                idx = ask_int("Index att toggla: ")
-                if idx is not None:
-                    m.select_ap(idx)
-                    show_aps(m.list_aps())
+                do_select(m)
             elif choice == "4":
                 do_capture(m, deauth=False)
             elif choice == "5":

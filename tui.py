@@ -125,3 +125,73 @@ def intro() -> None:
     matrix_rain()
     clear()
     banner()
+
+
+def interactive_toggle(rows, title=None):
+    """Arrow-key multi-select.
+
+    rows: list of (label, selected_bool). Returns a new list of booleans in the
+    same order. Cancelling (q/Esc) returns the original selection unchanged.
+    Returns None when stdout is not a TTY, so the caller can fall back to typing.
+    """
+    if not _TTY or not rows:
+        return None
+    import select as _select
+    import termios
+    import tty
+
+    if title is None:
+        title = "↑/↓ stega · [mellanslag] toggla · [enter] klar · [q] avbryt"
+    initial = [bool(s) for _, s in rows]
+    sel = list(initial)
+    cursor = 0
+    n = len(rows)
+
+    def render(first):
+        buf = [BOLD + GREEN + title + RESET]
+        for i, (label, _) in enumerate(rows):
+            box = c("[x]", BGREEN) if sel[i] else c("[ ]", DIM)
+            arrow = c("▶", BGREEN) if i == cursor else " "
+            body = (BGREEN if i == cursor else GREEN) + label + RESET
+            buf.append(f"{arrow} {box} {body}")
+        out = f"\033[{len(buf)}A" if not first else ""
+        sys.stdout.write(out + "\r\033[J" + "\n".join(buf) + "\n")
+        sys.stdout.flush()
+
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    sys.stdout.write(_HIDE)
+    try:
+        tty.setraw(fd)
+        render(True)
+        while True:
+            ch = sys.stdin.read(1)
+            if not ch:
+                break
+            if ch == "\x1b":
+                ready, _, _ = _select.select([sys.stdin], [], [], 0.05)
+                if not ready:
+                    sel = list(initial)  # bare Esc = cancel
+                    break
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    cursor = (cursor - 1) % n
+                elif seq == "[B":
+                    cursor = (cursor + 1) % n
+            elif ch in ("k", "K"):
+                cursor = (cursor - 1) % n
+            elif ch in ("j", "J"):
+                cursor = (cursor + 1) % n
+            elif ch == " ":
+                sel[cursor] = not sel[cursor]
+            elif ch in ("\r", "\n"):
+                break
+            elif ch in ("q", "Q", "\x03"):
+                sel = list(initial)
+                break
+            render(False)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        sys.stdout.write(_SHOW + "\n")
+        sys.stdout.flush()
+    return sel
