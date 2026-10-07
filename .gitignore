@@ -1,0 +1,12 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Capture artifacts and recovered material -- never commit these
+captures/
+*.hc22000
+*.pcap
+
+# Large wordlists
+rockyou.txt
