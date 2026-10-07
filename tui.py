@@ -136,6 +136,7 @@ def interactive_toggle(rows, title=None):
     """
     if not _TTY or not rows:
         return None
+    import os
     import select as _select
     import termios
     import tty
@@ -162,40 +163,41 @@ def interactive_toggle(rows, title=None):
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     sys.stdout.write(_HIDE)
+
+    def read_key():
+        # Read the raw fd, not buffered sys.stdin: otherwise Python's input
+        # buffer swallows the "[A" tail of an arrow key and we see a bare Esc.
+        b = os.read(fd, 1)
+        if b == b"\x1b":
+            ready, _, _ = _select.select([fd], [], [], 0.05)
+            if ready:
+                b += os.read(fd, 2)
+        return b
+
     try:
         # cbreak (not raw): key-at-a-time, no echo, but keep output NL->CR-LF
-        # mapping so our redraws land at column 0 instead of staircasing.
+        # mapping so redraws land at column 0 instead of staircasing.
         tty.setcbreak(fd)
         render()
         try:
             while True:
-                ch = sys.stdin.read(1)
-                if not ch:
+                key = read_key()
+                if not key:
                     break
-                if ch == "\x1b":
-                    ready, _, _ = _select.select([sys.stdin], [], [], 0.05)
-                    if not ready:
-                        sel = list(initial)  # bare Esc = cancel
-                        break
-                    seq = sys.stdin.read(2)
-                    if seq == "[A":
-                        cursor = (cursor - 1) % n
-                    elif seq == "[B":
-                        cursor = (cursor + 1) % n
-                elif ch in ("k", "K"):
+                if key == b"\x1b[A" or key in (b"k", b"K"):
                     cursor = (cursor - 1) % n
-                elif ch in ("j", "J"):
+                elif key == b"\x1b[B" or key in (b"j", b"J"):
                     cursor = (cursor + 1) % n
-                elif ch == " ":
+                elif key == b" ":
                     sel[cursor] = not sel[cursor]
-                elif ch in ("\r", "\n"):
+                elif key in (b"\r", b"\n"):
                     break
-                elif ch in ("q", "Q", "\x03"):
-                    sel = list(initial)
+                elif key in (b"q", b"Q", b"\x03", b"\x1b"):
+                    sel = list(initial)  # q / Ctrl-C / bare Esc = cancel
                     break
                 render()
         except KeyboardInterrupt:
-            sel = list(initial)  # Ctrl-C = cancel, restore cleanly
+            sel = list(initial)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
         sys.stdout.write(_SHOW + "\n")
