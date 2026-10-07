@@ -45,19 +45,24 @@ def report_status(text):
 
 def do_capture(m, deauth):
     selected = [ap for ap in m.list_aps() if ap.selected]
-    if len(selected) != 1:
-        print("Välj exakt ETT mål (ditt eget nät) först — alternativ 3.")
+    if not selected:
+        print("Inget mål valt — välj ditt nät först (alt 3, eller 8 som väljer åt dig).")
         return
-    target = selected[0]
-    print(f"Mål: [{target.index}] {target.ssid}  ch{target.channel}  {target.rssi} dBm")
+    channels = sorted({ap.channel for ap in selected})
+    if len(channels) > 1:
+        print(f"Valda mål ligger på flera kanaler {channels} — välj mål på EN kanal (klientens).")
+        return
+    channel = channels[0]
+    ssids = ", ".join(sorted({ap.ssid for ap in selected}))
+    print(f"Mål: {ssids}  ch{channel}  ({len(selected)} AP)")
     kind = "AKTIV deauth-capture" if deauth else "passiv capture"
-    if input(f"Bekräfta att '{target.ssid}' är DITT nät och kör {kind}? (ja/nej): ").strip().lower() != "ja":
+    if input(f"Bekräfta att detta är DITT nät och kör {kind}? (ja/nej): ").strip().lower() != "ja":
         print("Avbrutet.")
         return
     secs = ask_int("Sekunder [30]: ", 30)
-    print(f"Fångar {secs}s på kanal {target.channel} ... (Ctrl-C avbryter)")
+    print(f"Fångar {secs}s på kanal {channel} ... (Ctrl-C avbryter)")
     try:
-        pcap, _ = m.capture_pmkid(channel=target.channel, targeted=True,
+        pcap, _ = m.capture_pmkid(channel=channel, targeted=True,
                                   deauth=deauth, seconds=secs, on_text=report_status)
     except KeyboardInterrupt:
         pcap = b""
@@ -105,6 +110,31 @@ def do_convert_crack():
         print(exc)
 
 
+def do_find_clients(m):
+    secs = ask_int("Scan-sekunder [20]: ", 20)
+    print(f"Scannar {secs}s och letar associerade klienter ...")
+    rows = m.clients_by_network(secs)
+    if not rows:
+        print("Inga associerade klienter sågs. Väck en klient (t.ex. Ring Light) och försök igen.")
+        return
+    print("Nät med aktiva klienter:")
+    for essid, ch, macs in rows:
+        print(f"  {essid}  ch{ch}  {len(macs)} klient(er): {', '.join(macs)}")
+    essid = input("\nVälj mål-SSID att selektera (blankt = hoppa): ").strip()
+    if not essid:
+        return
+    ch = ask_int("Kanal: ")
+    if ch is None:
+        return
+    want, got = m.select_ssid_on_channel(essid, ch)
+    if not want:
+        print(f"Hittade inga '{essid}' på ch{ch} i listan — kör en längre scan (alt 1).")
+    elif got == want:
+        print(f"Valde '{essid}' på ch{ch}: index {got}. Kör nu alt 4 (passiv) eller 5 (deauth).")
+    else:
+        print(f"Selektionen blev {got} men ville ha {want} — rensa och försök igen.")
+
+
 def main():
     port = sys.argv[1] if len(sys.argv) > 1 else PORT_DEFAULT
     with Marauder(port) as m:
@@ -120,6 +150,7 @@ def main():
             print(" 5) Fånga handshake/PMKID — med deauth (endast ditt nät)")
             print(" 6) Starta om kortet")
             print(" 7) Konvertera + knäck senaste capturen")
+            print(" 8) Hitta klienters AP/kanal (+välj mål)")
             print(" 0) Avsluta")
             choice = input("> ").strip()
             if choice == "1":
@@ -144,6 +175,8 @@ def main():
                 print("Omstartad.")
             elif choice == "7":
                 do_convert_crack()
+            elif choice == "8":
+                do_find_clients(m)
             elif choice == "0":
                 m.stop()
                 print("Hej då!")

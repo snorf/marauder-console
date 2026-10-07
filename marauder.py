@@ -16,6 +16,21 @@ _AP_RE = re.compile(
     r"^\[(\d+)\]\[CH:(\d+)\]\s+(.*?)\s+(-?\d+)(\s+\(selected\))?\s*$"
 )
 
+# Live `scanall` AP line, e.g. "-70 Ch: 6 10:a8:29:7b:d7:a1 ESSID: Bostner24 31 11"
+_AP_STREAM_RE = re.compile(
+    r"^-?(\d+)\s+Ch:\s*(\d+)\s+([0-9a-fA-F:]{17})\s+ESSID:\s*(.*?)(?:\s+\d+\s+\d+)?\s*$"
+)
+# Station<->AP link line, e.g. "1: sta: 20:0d:3d:73:05:0f -> ap: 10:a8:29:7b:d7:a1"
+_MAC_RE = re.compile(r"(sta|ap):\s*([0-9a-fA-F:]{17})")
+
+
+def _is_unicast(mac: str) -> bool:
+    """True for a real station MAC; False for multicast/broadcast group MACs."""
+    try:
+        return int(mac.split(":")[0], 16) & 1 == 0
+    except ValueError:
+        return False
+
 
 @dataclass
 class AccessPoint:
@@ -90,6 +105,58 @@ class Marauder:
     def select_ap(self, index: int) -> None:
         # Note: `select` TOGGLES; callers confirm state via list_aps().
         self.t.command(f"select -a {index}")
+
+    def select_ssid_on_channel(self, ssid: str, channel: int) -> tuple[list[int], list[int]]:
+        """Select every AP matching ssid+channel. Returns (wanted, selected).
+
+        `list -a` exposes no BSSID, so we target by SSID+channel -- selecting
+        all radios of that network on the client's channel.
+        """
+        want = sorted(ap.index for ap in self.list_aps()
+                      if ap.ssid == ssid and ap.channel == channel)
+        for idx in want:
+            self.select_ap(idx)
+        got = sorted(ap.index for ap in self.list_aps() if ap.selected)
+        return want, got
+
+    # -- station discovery ---------------------------------------------------
+    def scan_stations(self, seconds: float = 20.0) -> tuple[dict, list]:
+        """Run `scanall` and parse its live stream.
+
+        Returns (bssids, links): bssids maps a BSSID to {channel, essid};
+        links is a list of (station_mac, ap_bssid) association pairs.
+        """
+        self.t.write_line("scanall")
+        text = self.t.read_for(seconds).decode(errors="replace")
+        self.stop()
+        bssids: dict = {}
+        links: list = []
+        for line in text.splitlines():
+            m = _AP_STREAM_RE.match(line.strip())
+            if m:
+                _, ch, bssid, essid = m.groups()
+                bssids[bssid.lower()] = {"channel": int(ch), "essid": essid.strip()}
+                continue
+            macs = {kind: mac.lower() for kind, mac in _MAC_RE.findall(line)}
+            if "sta" in macs and "ap" in macs:
+                links.append((macs["sta"], macs["ap"]))
+        return bssids, links
+
+    def clients_by_network(self, seconds: float = 20.0) -> list:
+        """[[essid, channel, [client_macs]], ...] for networks with clients."""
+        bssids, links = self.scan_stations(seconds)
+        agg: dict = {}
+        for sta, ap in links:
+            if not _is_unicast(sta):
+                continue  # drop multicast/broadcast destinations -- not real clients
+            info = bssids.get(ap)
+            if info is None:
+                continue
+            agg.setdefault((info["essid"], info["channel"]), set()).add(sta)
+        return sorted(
+            ([essid, ch, sorted(macs)] for (essid, ch), macs in agg.items()),
+            key=lambda row: (-len(row[2]), row[0]),
+        )
 
     # -- capture -------------------------------------------------------------
     def capture_pmkid(
