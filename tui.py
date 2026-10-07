@@ -147,49 +147,55 @@ def interactive_toggle(rows, title=None):
     cursor = 0
     n = len(rows)
 
-    def render(first):
+    def render():
         buf = [BOLD + GREEN + title + RESET]
         for i, (label, _) in enumerate(rows):
             box = c("[x]", BGREEN) if sel[i] else c("[ ]", DIM)
             arrow = c("▶", BGREEN) if i == cursor else " "
             body = (BGREEN if i == cursor else GREEN) + label + RESET
             buf.append(f"{arrow} {box} {body}")
-        out = f"\033[{len(buf)}A" if not first else ""
-        sys.stdout.write(out + "\r\033[J" + "\n".join(buf) + "\n")
+        # Clear and redraw from the top each keypress -- robust to any list
+        # height and to terminal scrolling (no cursor-up arithmetic).
+        sys.stdout.write("\033[2J\033[H" + "\n".join(buf) + "\n")
         sys.stdout.flush()
 
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     sys.stdout.write(_HIDE)
     try:
-        tty.setraw(fd)
-        render(True)
-        while True:
-            ch = sys.stdin.read(1)
-            if not ch:
-                break
-            if ch == "\x1b":
-                ready, _, _ = _select.select([sys.stdin], [], [], 0.05)
-                if not ready:
-                    sel = list(initial)  # bare Esc = cancel
+        # cbreak (not raw): key-at-a-time, no echo, but keep output NL->CR-LF
+        # mapping so our redraws land at column 0 instead of staircasing.
+        tty.setcbreak(fd)
+        render()
+        try:
+            while True:
+                ch = sys.stdin.read(1)
+                if not ch:
                     break
-                seq = sys.stdin.read(2)
-                if seq == "[A":
+                if ch == "\x1b":
+                    ready, _, _ = _select.select([sys.stdin], [], [], 0.05)
+                    if not ready:
+                        sel = list(initial)  # bare Esc = cancel
+                        break
+                    seq = sys.stdin.read(2)
+                    if seq == "[A":
+                        cursor = (cursor - 1) % n
+                    elif seq == "[B":
+                        cursor = (cursor + 1) % n
+                elif ch in ("k", "K"):
                     cursor = (cursor - 1) % n
-                elif seq == "[B":
+                elif ch in ("j", "J"):
                     cursor = (cursor + 1) % n
-            elif ch in ("k", "K"):
-                cursor = (cursor - 1) % n
-            elif ch in ("j", "J"):
-                cursor = (cursor + 1) % n
-            elif ch == " ":
-                sel[cursor] = not sel[cursor]
-            elif ch in ("\r", "\n"):
-                break
-            elif ch in ("q", "Q", "\x03"):
-                sel = list(initial)
-                break
-            render(False)
+                elif ch == " ":
+                    sel[cursor] = not sel[cursor]
+                elif ch in ("\r", "\n"):
+                    break
+                elif ch in ("q", "Q", "\x03"):
+                    sel = list(initial)
+                    break
+                render()
+        except KeyboardInterrupt:
+            sel = list(initial)  # Ctrl-C = cancel, restore cleanly
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
         sys.stdout.write(_SHOW + "\n")
