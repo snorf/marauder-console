@@ -55,7 +55,7 @@
   "app.no_port": "Ingen serieport hittad. Ange --port /dev/cu.usbmodem… (är kortet inkopplat?).",
   "status.countdown": "▓ {label} … {left}s {dots}",
   "status.fetching": "▓ {label} … hämtar resultat {dots}",
-  "status.capture": "⟳ capture {elapsed}s │ EAPOL-ramar: {eapol}",
+  "status.capture": "⟳ capture {elapsed}s / {total}s │ EAPOL-ramar: {eapol}",
   "status.scanning": "scanning",
   "status.station_scan": "station-scan",
   "confirm.yes": "ja j"

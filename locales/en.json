@@ -55,7 +55,7 @@
   "app.no_port": "No serial port found. Pass --port /dev/cu.usbmodem… (is the board connected?).",
   "status.countdown": "▓ {label} … {left}s {dots}",
   "status.fetching": "▓ {label} … fetching results {dots}",
-  "status.capture": "⟳ capture {elapsed}s │ EAPOL frames: {eapol}",
+  "status.capture": "⟳ capture {elapsed}s / {total}s │ EAPOL frames: {eapol}",
   "status.scanning": "scanning",
   "status.station_scan": "station scan",
   "confirm.yes": "yes y"

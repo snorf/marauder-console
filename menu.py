@@ -76,17 +76,6 @@ def _countdown(label, seconds, work):
         tui.end_status()
 
 
-def _capture_reporter():
-    state = {"eapol": 0, "start": time.time()}
-
-    def report(text):
-        state["eapol"] += text.count("Received EAPOL")
-        tui.status(t("status.capture", elapsed=f"{time.time() - state['start']:5.1f}",
-                     eapol=state["eapol"]))
-
-    return report
-
-
 def do_select(m):
     aps = m.list_aps()
     if not aps:
@@ -134,13 +123,35 @@ def do_capture(m, deauth):
     secs = ask_int(t("cap.secs_prompt", default=30), 30)
     tui.line(t("cap.capturing", secs=secs, channel=channel), tui.GREEN)
     pcap = b""
+    state = {"eapol": 0, "start": time.time()}
+    stop = threading.Event()
+
+    def on_text(text):
+        state["eapol"] += text.count("Received EAPOL")
+
+    def tick():
+        # Time-driven, so the elapsed clock keeps moving even while the serial
+        # line is quiet (the board is still working during a deauth capture).
+        while not stop.is_set():
+            elapsed = time.time() - state["start"]
+            tui.status(t("status.capture", elapsed=f"{elapsed:5.1f}", total=secs,
+                         eapol=state["eapol"]))
+            time.sleep(0.2)
+
+    ticker = threading.Thread(target=tick, daemon=True)
+    live = sys.stdout.isatty()
+    if live:
+        ticker.start()
     try:
         pcap, _ = m.capture_pmkid(channel=channel, targeted=True,
-                                  deauth=deauth, seconds=secs, on_text=_capture_reporter())
+                                  deauth=deauth, seconds=secs, on_text=on_text)
     except KeyboardInterrupt:
         m.stop()
         tui.line("\n" + t("cap.aborted"), tui.DIM)
     finally:
+        stop.set()
+        if live:
+            ticker.join(timeout=0.3)
         tui.end_status()
         if deauth:
             tui.line(t("cap.deauth_reboot"), tui.DIM)
