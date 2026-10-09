@@ -9,6 +9,15 @@ It does nothing the Marauder firmware doesn't already do; it's a convenience
 wrapper and a homage to [ESP32 Marauder](https://github.com/justcallmekoko/ESP32Marauder)
 by *justcallmekoko*.
 
+## Disclaimer
+
+Provided **as is**, with **no warranty** and **no liability** — see
+[LICENSE](LICENSE). This is a hobby tool for learning and for auditing your
+own network. **You alone are responsible** for how you use it and for complying
+with the laws of your jurisdiction. Using it against networks or devices you do
+not own, or do not have explicit permission to test, may be illegal. The author
+accepts no liability for any misuse or damage.
+
 ## ⚠️ Authorized use only
 
 This tool captures WPA handshakes and can transmit **deauthentication** frames.
